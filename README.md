@@ -9,5 +9,6 @@ The contributions of L2D-LORE can be summarized as follows:
 2. We used the distance between data points and their corresponding counterfactuals as a confidence metric to define a rejection policy for the given classifier.
 3. We generate human-understandable explanations to accompany the outcome of the classifier in case of rejection.
 
+A complete description of the method can be found here: https://www.overleaf.com/read/pwdschmbxhqj#1b2b66
 
 ![pipeline](Figures/L2R_LORE.svg)
