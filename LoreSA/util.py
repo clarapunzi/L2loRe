@@ -3,10 +3,16 @@ import pandas as pd
 import scipy.stats as st
 
 #import encdec
-from .encdec import *
+from Lib.LoreSA.encdec import *
 from scipy.spatial.distance import jaccard
 import warnings
 
+from sklearn.model_selection import RepeatedStratifiedKFold
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+from LoreSA.metrics import nonrejected_accuracy, classification_quality, rejection_quality, rejection_classification_report
+
+from LoreSA.datamanager import prepare_dataset
 
 def vector2dict(x, feature_names):
     return {k: v for k, v in zip(feature_names, x)}
@@ -92,7 +98,7 @@ def calculate_feature_values(X, numeric_columns_index, categorical_use_prob=Fals
             new_values = np.array([unique_values[0]] * size)
         else:
             if i in numeric_columns_index:
-                values = values.astype(np.float)
+                values = values.astype(float)
                 if continuous_fun_estimation:
                     new_values = get_distr_values(values, size)
                 else:  # suppose is gaussian
@@ -292,3 +298,127 @@ def get_df_stats(df, target):
     stats['n_categorical_features'] = len(df_no_y.select_dtypes(exclude='number').columns)
 
     return stats
+
+def hyperparameter_tuning(clf, params, X, y):
+    # define evaluation
+    cv = RepeatedStratifiedKFold(n_splits=5, n_repeats=10, random_state=123)
+    # define search
+    rnd_search = RandomizedSearchCV(clf, params, n_iter=50, scoring='accuracy', n_jobs=-1, cv=cv, refit=True, verbose= 2, random_state=123)
+    # execute search
+    result = rnd_search.fit(X, y)
+    # summarize result
+    print('Best Score: %s' % result.best_score_)
+    print('Best Hyperparameters: %s' % result.best_params_)
+    return result.best_estimator_, result.best_params_
+
+def get_tuned_classifier(d, clf, clf_dict, params_dict):
+    best_clf = clf_dict[clf]
+    best_clf.set_params(**params_dict[d][clf])
+    return best_clf
+
+def get_classification_metrics(y_true, y_pred, y_proba, binary):
+    metrics = dict()
+    if binary:
+          metrics['accuracy_score'] = accuracy_score(y_true, y_pred)
+          metrics['f1_score'] = f1_score(y_true, y_pred)
+          metrics['roc_auc_score'] = roc_auc_score(y_true, y_proba[:,1])
+    else:
+          # multiclass classification
+          metrics['accuracy_score'] = accuracy_score(y_true, y_pred)
+          metrics['f1_score'] = f1_score(y_true, y_pred, average='weighted')
+          metrics['roc_auc_score'] = roc_auc_score(y_true, y_proba, multi_class='ovr', average='weighted')
+    return metrics
+
+# Load and transform dataset 
+def load_datasets(source_file_dict):
+
+    # Binary
+    compas_df = pd.read_csv(source_file_dict['compas'], skipinitialspace=True, na_values='?', keep_default_na=True)
+    adult_df = pd.read_csv(source_file_dict['adult'], skipinitialspace=True, na_values='?', keep_default_na=True)
+    german_df = pd.read_csv(source_file_dict['german_credit'], skipinitialspace=True, na_values='?', keep_default_na=True)
+    # Multiclass
+    wine_df = pd.read_csv(source_file_dict['wine'], sep=';', skipinitialspace=True, na_values='?', keep_default_na=True)
+    students_df = pd.read_csv(source_file_dict['student'], sep=';', skipinitialspace=True, na_values='?', keep_default_na=True)
+    abalone_df = pd.read_csv(source_file_dict['abalone'], skipinitialspace=True, na_values='?', keep_default_na=True)
+
+    df_dict = { 
+            'wine' : wine_df,
+            'student': students_df,
+            'abalone': abalone_df,
+            'compas' : compas_df,
+            'adult' : adult_df,
+            'german_credit' : german_df,
+    }
+    return df_dict
+          
+
+def transform_datasets(df_dict, class_field_dict):
+
+    # Transform datasets
+    df_dict_new = dict()
+    for k, v in df_dict.items():
+        df, feature_names, class_values, numeric_columns, categorical_columns, rdf, real_feature_names, features_map = prepare_dataset(v, class_field_dict[k], 'onehot')
+        df_dict_new[k] = [df, feature_names, class_values, numeric_columns, categorical_columns, rdf, real_feature_names, features_map]
+
+    return df_dict_new
+
+def compute_rejection_policy(r_list, dist_dict, y_true, y_pred):
+
+    rej_class_report_list = []
+    an_list = []
+    cq_list = []
+    rq_list = []
+    rejected_samples = dict()
+    n = len(y_true)
+    id_map = {i:j for i, j in enumerate(dist_dict.keys())}
+    for r_num in r_list:
+        r_frac = r_num / n     # fraction of rejected samples over total samples
+        # define rejection list
+        rejection_list = [0]*n 
+        rejected_x = [] 
+        if r_num > 0:
+            dist_values = np.array(list(dist_dict.values()))
+            #id_to_rej = [k for k, v in sorted(dist_dict.items(), key=lambda x:x[1])][:r_num]
+            id_to_rej = np.argpartition(dist_values, r_num - 1)[:r_num]  # 0 to k indeces of min values are at the front of the array 
+            for i in id_to_rej:
+                rejection_list[i] = 1 
+                rejected_x.append(id_map[i])
+
+        # get the rejection-classification report
+        correct_nonrejected, correct_rejected, miscl_nonrejected, miscl_rejected, df = rejection_classification_report(y_true, y_pred, rejection_list)
+
+        # get performance metrics
+        #AN = nonrejected_accuracy(correct_nonrejected, n, r_frac)
+        AN = nonrejected_accuracy(correct_nonrejected, miscl_nonrejected)
+        #CQ = classification_quality(correct_nonrejected, n, r_frac)
+        CQ = classification_quality(correct_nonrejected, miscl_rejected, n)
+        #RQ = rejection_quality_by_r(correct_nonrejected, n, r_frac)
+        RQ = rejection_quality(correct_rejected, correct_nonrejected, miscl_rejected, miscl_nonrejected)
+
+        # save results
+        rej_class_report_list.append(df)
+        rejected_samples[r_num] = rejected_x
+        an_list.append(AN)
+        cq_list.append(CQ)
+        rq_list.append(RQ)
+
+    return rejected_samples, an_list, cq_list, rq_list, rej_class_report_list
+
+
+def compute_distance_from_counterfactual(X_test, expl_list):
+
+    # create a list of [(x, xc)]
+    # compute the distance for each of them
+    # sort by distance and reject based on a rejection fraction
+    dist_dict = dict()
+    for i in expl_list.keys():
+        d = np.inf
+        # iterate over different classes
+        for c in expl_list[i].Xc.keys():
+            # iterate over all counterfactuals per class 
+            for countf in expl_list[i].Xc[c]:
+                dist = cdist(X_test.loc[i].values.reshape(1, -1) , countf.reshape(1, -1))[0]
+                if dist < d:
+                    d = dist
+        dist_dict[i] = float(d)
+    return dist_dict

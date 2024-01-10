@@ -61,6 +61,7 @@ df_dict = {'compas' : compas_df,
             'student': students_df,
             'abalone': abalone_df
             }
+
 stats_dict = dict()
 for k, v in df_dict.items():
     stats = get_df_stats(v, class_field_dict[k])
@@ -191,11 +192,13 @@ neigh_kwargs = {
 # K_transformed: a piece of dataset in the form you can feed to the BB
 # extreme fidelity: if True, it checks that the prediction of the surrogate model is the same as the BB
 # filter c rules: it filters the counterfactual rules by checking if they are true conterfactuals or not
-explainer = LOREM(X_train.values, bb.predict, bb.predict_proba, feature_names, class_name, class_values, numeric_columns, features_map,
+explainer = LOREM(X_train.values, bb.predict, bb.predict_proba, 
+                  feature_names, class_values, numeric_columns, categorical_columns
+                  feature_names, class_name, class_values, numeric_columns, features_map,
                       neigh_type=neigh_type, categorical_use_prob=True, continuous_fun_estimation=True, size=1000,
                       ocr=0.1, multi_label=False, one_vs_rest=False, random_state=42, verbose=True,
                       Kc=X_train, bb_predict_proba=bb.predict_proba, K_transformed=X_train.values, discretize=True,
-                      encdec=None, unc_thr=unc_thr, uncertainty_metric=uncertainty_metric, binary=binary, **neigh_kwargs)
+                      encdec=None, uncertainty_thr=unc_thr, uncertainty_metric=uncertainty_metric, binary=binary, **neigh_kwargs)
 
 # x the instance to explain
 # samples the number of samples to generate during the neighbourhood generation
@@ -220,59 +223,17 @@ expl_list = []
 for j in range(len(x_list)):
     print('Iteration ', j+1)
     expl = explainer.explain_instance_stable(x_list[j], 150, runs=runs, n_jobs=2
-                                         #, extract_counterfactuals_by= 'min_distance'
+                                         , extract_counterfactuals_by= 'min_distance'
                                          )
     expl_list.append(expl)
 
 
-
-# create a list of [(x, xc)]
-# compute the distance for each of them
-# sort by distance and reject based on a rejection fraction
-dist_list = []
-for i in range(len(expl_list)):
-    d = np.inf
-    for j in range(len(expl_list[i].Xc)):
-        dist = cdist(x_list[i].reshape(1, -1), expl_list[i].Xc[j].reshape(1, -1))[0]
-        if dist < d:
-            d = dist
-    dist_list.append(float(d))
-
 n = len(x_list)
+# r_list contains the rejection fraction on which to evaluate the selective classifier
 r_list = list(range(n+1))
 y_pred = bb.predict(x_list)
 
 
-rej_class_report_list = []
-an_list = []
-cq_list = []
-rq_list = []
-
-for r_num in r_list:
-    r_frac = r_num / n     # fraction of rejected samples over total samples
-    # define rejection list
-    rejection_list = [0]*n  
-    if r_num > 0:
-        id_to_rej = np.argpartition(dist_list, r_num - 1)[:r_num]  # 0 to k indeces of min values are at the front of the array 
-        for i in id_to_rej:
-            rejection_list[i] = 1 
-    
-    # get the rejection-classification report
-    correct_nonrejected, correct_rejected, miscl_nonrejected, miscl_rejected, df = rejection_classification_report(y_true, y_pred, rejection_list)
-    
-    # get performance metrics
-    AN = nonrejected_accuracy(correct_nonrejected, n, r_frac)
-    CQ = classification_quality(correct_nonrejected, n, r_frac)
-    #RQ = rejection_quality(correct_nonrejected, n, r_frac)
-    RQ = rejection_quality(correct_rejected, correct_nonrejected, miscl_rejected, miscl_nonrejected)
-
-    # save results
-    rej_class_report_list.append(df)
-    an_list.append(AN)
-    cq_list.append(CQ)
-    rq_list.append(RQ)
-
-sum(an_list)
 
 plt.plot(r_list, an_list)
 plt.show()
