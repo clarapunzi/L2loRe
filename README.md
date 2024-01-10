@@ -1,3 +1,5 @@
+# Learning to Reject via LOcal Rule-based Explanations (L2R-LORE)
+
 Learning to Reject via LOcal Rule-based Explanations (L2R-LORE) is a novel method that implements a dependent (i.e., function of the classifier’s output) and staged (i.e., learnt post-hoc with respect to the classifier)
 abstention policy for the rejection of ambiguous samples. L2R-LORE is model agnostic with respect to ML models that solve binary and classification tasks using tabular data. Finally, L2R-LORE is interpretable by-design, since the
 implemented abstention mechanism relies on a distance measure derived from stable local rule-based counterfactuals (LORE).
