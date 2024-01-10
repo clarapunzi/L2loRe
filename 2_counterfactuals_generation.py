@@ -7,8 +7,8 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 #from Tabular.xailib.explainers.lore_explainer import LoreTabularExplainer
-from LoreSA.lorem_new import LOREU
-from LoreSA.util import get_tuned_classifier, load_datasets, transform_datasets, compute_rejection_policy, compute_distance_from_counterfactual
+from MyLoreSA.lorem_new import LOREU
+from MyLoreSA.util import get_tuned_classifier, load_datasets, transform_datasets, compute_rejection_policy, compute_distance_from_counterfactual
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier

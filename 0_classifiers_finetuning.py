@@ -8,10 +8,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 
 
-from LoreSA.datamanager import prepare_dataset
+from MyLoreSA.datamanager import prepare_dataset
 #from Tabular.xailib.explainers.lore_explainer import LoreTabularExplainer
 #from LoreSA.sklearn_classifier_wrapper import sklearn_classifier_wrapper
-from LoreSA.util import get_df_stats, hyperparameter_tuning
+from MyLoreSA.util import get_df_stats, hyperparameter_tuning
 
 import matplotlib.pyplot as plt
 from tabulate import tabulate

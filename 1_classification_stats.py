@@ -6,10 +6,10 @@ import torch
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
 
-from LoreSA.datamanager import prepare_dataset
+from MyLoreSA.datamanager import prepare_dataset
 #from Tabular.xailib.explainers.lore_explainer import LoreTabularExplainer
-from LoreSA.sklearn_classifier_wrapper import sklearn_classifier_wrapper
-from LoreSA.util import get_df_stats, get_tuned_classifier, get_classification_metrics, load_datasets, transform_datasets
+from MyLoreSA.sklearn_classifier_wrapper import sklearn_classifier_wrapper
+from MyLoreSA.util import get_df_stats, get_tuned_classifier, get_classification_metrics, load_datasets, transform_datasets
 
 import matplotlib.pyplot as plt
 from tabulate import tabulate
@@ -31,7 +31,7 @@ else:
 
 
 # Load and transform dataset
-df_dict = load_datasets(source_file_fict)
+df_dict = load_datasets(source_file_dict)
 
 # Collect statistics about datasets
 stats_dict = dict()
