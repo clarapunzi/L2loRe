@@ -46,7 +46,7 @@ clf_dict = {
 }
 
 
-neigh_type = 'geneticp' # the generation you want (random, genetic, geneticp, cfs, rndgen)
+neigh_type = 'geneticp' # the generation you want (random, genetic, geneticp, cfs, rndgen, rndgenp)
 binary = 'binary_from_dts' #how to merge the trees (binary from dts, binary from bb are creating a binary tree, nari is creating a n ari tree)
 n = 1000 # neighborhood size (i.e., 2n instances in total) --> in realtà dovrebbe essere sample
 n_neigh = 150

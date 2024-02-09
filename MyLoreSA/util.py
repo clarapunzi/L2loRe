@@ -10,9 +10,9 @@ import warnings
 from sklearn.model_selection import RepeatedStratifiedKFold
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
-from LoreSA.metrics import nonrejected_accuracy, classification_quality, rejection_quality, rejection_classification_report
+from MyLoreSA.metrics import nonrejected_accuracy, classification_quality, rejection_quality, rejection_classification_report
 
-from LoreSA.datamanager import prepare_dataset
+from MyLoreSA.datamanager import prepare_dataset
 
 def vector2dict(x, feature_names):
     return {k: v for k, v in zip(feature_names, x)}
