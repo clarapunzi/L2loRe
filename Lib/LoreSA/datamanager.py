@@ -75,7 +75,7 @@ def get_real_feature_names(rdf, numeric_columns, class_name):
 
 def one_hot_encoding(df, class_name):
     if not isinstance(class_name, list):
-        dfX = pd.get_dummies(df[[c for c in df.columns if c != class_name]], prefix_sep='=')
+        dfX = pd.get_dummies(df[[c for c in df.columns if c != class_name]], prefix_sep='=', dtype=float)
         class_name_map = {v: k for k, v in enumerate(sorted(df[class_name].unique()))}
         dfY = df[class_name].map(class_name_map)
         df = pd.concat([dfX, dfY], axis=1)
@@ -83,7 +83,7 @@ def one_hot_encoding(df, class_name):
         feature_names = list(dfX.columns)
         class_values = sorted(class_name_map)
     else: # isinstance(class_name, list)
-        dfX = pd.get_dummies(df[[c for c in df.columns if c not in class_name]], prefix_sep='=')
+        dfX = pd.get_dummies(df[[c for c in df.columns if c not in class_name]], prefix_sep='=', dtype=float)
         # class_name_map = {v: k for k, v in enumerate(sorted(class_name))}
         class_values = sorted(class_name)
         dfY = df[class_values]

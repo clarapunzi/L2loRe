@@ -46,7 +46,7 @@ clf_dict = {
 }
 
 
-neigh_type = 'geneticp' # the generation you want (random, genetic, geneticp, cfs, rndgen, rndgenp)
+neigh_type = 'rndgenp' # the generation you want (random, genetic, geneticp, cfs, rndgen, rndgenp)
 binary = 'binary_from_dts' #how to merge the trees (binary from dts, binary from bb are creating a binary tree, nari is creating a n ari tree)
 n = 1000 # neighborhood size (i.e., 2n instances in total) --> in realtà dovrebbe essere sample
 n_neigh = 150
@@ -65,6 +65,14 @@ for d, d_val in df_dict_new_small.items():
     # for each dataset, evaluate all 5 classifiers
     X = d_val[0].drop(columns=class_field_dict[d])
     y = d_val[0][class_field_dict[d]]
+    
+    numeric_columns, categorical_columns = [], []
+    for i, col in enumerate(X.columns):
+        if col in d_val[3]:
+            numeric_columns.append(i)
+        else:
+            categorical_columns.append(i)
+    
     X_train, X_test, y_train, y_test = train_test_split(X, y,
                                                         test_size=0.2,
                                                         random_state=123,
@@ -84,7 +92,8 @@ for d, d_val in df_dict_new_small.items():
                       neigh_type=neigh_type, categorical_use_prob=True, continuous_fun_estimation=True, size=n,
                       ocr=0.1, multi_label=False, one_vs_rest=False, random_state=42, verbose=False,
                       Kc=X_train, K_transformed=X_train.values, discretize=True, encdec=None,
-                      uncertainty_thr=unc_thr, uncertainty_metric=uncertainty_metric, binary=binary, extreme_fidelity = True, **neigh_kwargs)
+                      uncertainty_thr=unc_thr, uncertainty_metric=uncertainty_metric, 
+                      binary=binary, extreme_fidelity = True, **neigh_kwargs)
 
     # Compute counterfactual over a random sample of 200 test instances (stratified by correct prediction)
     s = pd.Series(y_pred == y_test).to_frame()
@@ -96,7 +105,8 @@ for d, d_val in df_dict_new_small.items():
     id_map = {j:i for i, j in enumerate(y_test.index)}
     expl_list = dict()
     for j in tqdm(selected_indices):
-        exp = explainer.explain_instance_stable(X_test.loc[j].values, samples=n_neigh, extract_counterfactuals_by= 'min_distance')
+        exp = explainer.explain_instance_stable(X_test.loc[j].values, numeric_columns, categorical_columns,
+                                                samples=n_neigh, extract_counterfactuals_by= 'min_distance')
         expl_list[j] = exp
 
     # compute distance from counterfactuals (minimum over all classes)

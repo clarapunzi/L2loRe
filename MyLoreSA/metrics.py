@@ -255,9 +255,9 @@ def continuous_distance(x, cf_list, continuous_features, metric='euclidean', X=N
 
         def _mad_cityblock(u, v):
             return mad_cityblock(u, v, mad)
-        dist = cdist(x.reshape(1, -1)[:, continuous_features], cf_list[:, continuous_features], metric=_mad_cityblock)
+        dist = cdist(x.reshape(1, -1)[:, continuous_features], cf_list.reshape(1, -1)[:, continuous_features], metric=_mad_cityblock)
     else:
-        dist = cdist(x.reshape(1, -1)[:, continuous_features], cf_list[:, continuous_features], metric=metric)
+        dist = cdist(x.reshape(1, -1)[:, continuous_features], cf_list.reshape(1, -1)[:, continuous_features], metric=metric)
 
     if agg is None or agg == 'mean':
         return np.mean(dist)
@@ -271,7 +271,7 @@ def continuous_distance(x, cf_list, continuous_features, metric='euclidean', X=N
 
 def categorical_distance(x, cf_list, categorical_features, metric='jaccard', agg=None):
 
-    dist = cdist(x.reshape(1, -1)[:, categorical_features], cf_list[:, categorical_features], metric=metric)
+    dist = cdist(x.reshape(1, -1)[:, categorical_features], cf_list.reshape(1, -1)[:, categorical_features], metric=metric)
 
     if agg is None or agg == 'mean':
         return np.mean(dist)
@@ -281,6 +281,22 @@ def categorical_distance(x, cf_list, categorical_features, metric='jaccard', agg
 
     if agg == 'min':
         return np.min(dist)
+
+def distance_cont_cat(x, cf_list, continuous_features, categorical_features, 
+                      metric_continuous='euclidean', metric_categorical='hamming',
+                      ratio_cont=None, agg=None):
+    nbr_features = len(cf_list)#shape[1]
+    dist_cont = continuous_distance(x, cf_list, continuous_features, metric=metric_continuous, X=None, agg=agg)
+    dist_cate = categorical_distance(x, cf_list, categorical_features, metric=metric_categorical, agg=agg)
+    if ratio_cont is None:
+        ratio_continuous = len(continuous_features) / nbr_features
+        ratio_categorical = len(categorical_features) / nbr_features
+    else:
+        ratio_continuous = ratio_cont
+        ratio_categorical = 1.0 - ratio_cont
+    dist = ratio_continuous * dist_cont + ratio_categorical * dist_cate
+    return dist
+
 
 
 def distance_l2j(x, cf_list, continuous_features, categorical_features, ratio_cont=None, agg=None):

@@ -1,7 +1,7 @@
 from sklearn.base import BaseEstimator, ClassifierMixin
 from scipy.stats import gamma
-from lorem_new import LOREU
-from util import compute_rejection_policy, compute_distance_from_counterfactual
+from MyLoreSA.lorem_new import LOREU
+from MyLoreSA.util import compute_rejection_policy, compute_distance_from_counterfactual
 from tqdm import tqdm
 import numpy as np
 import pandas as pd

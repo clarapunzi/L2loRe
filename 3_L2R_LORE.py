@@ -47,15 +47,15 @@ clf_dict = {
 }
 
 
-neigh_type = 'geneticp' # the generation you want (random, genetic, geneticp, cfs, rndgen)
+neigh_type = 'rndgenp' # the generation you want (random, genetic, geneticp, cfs, rndgen)
 binary = 'binary_from_dts' #how to merge the trees (binary from dts, binary from bb are creating a binary tree, nari is creating a n ari tree)
 n = 1000 # neighborhood size (i.e., 2n instances in total) --> in realtà dovrebbe essere sample
 n_neigh = 150
 cxpb = 0.7 # values to set for the genetic generation
 mutpb = 0.5 #values to set for the genetic generation
-unc_thr = config['uncertainty_threshold']
+unc_thr = config['uncertainty_threshold'] # TO DO: finetuning
 uncertainty_metric = 'max' # max or ratio
-test_size = config['test_size']
+test_size = config['test_size'] # TO DO: add option None to train lore on train-test split
 
 
 df_dict_new_small = {k:v for k,v in df_dict_new.items() if k in datasets}
@@ -84,11 +84,14 @@ for d, d_val in df_dict_new_small.items():
                       neigh_type=neigh_type, categorical_use_prob=True, continuous_fun_estimation=True, size=n,
                       ocr=0.1, multi_label=False, one_vs_rest=False, random_state=42, verbose=False,
                       Kc=X_train, K_transformed=X_train.values, discretize=True, encdec=None,
-                      uncertainty_thr=unc_thr, uncertainty_metric=uncertainty_metric, binary=binary, extreme_fidelity = True, **neigh_kwargs)
+                      uncertainty_thr=unc_thr, uncertainty_metric=uncertainty_metric, 
+                      binary=binary, extreme_fidelity = True, **neigh_kwargs)
     
 
-    lore = L2R_LORE(bb, explainer, n_neigh=n_neigh, extract_counterfactuals_by='min_distance', optimize_by='nonrejected_accuracy',
-                 n_tau_candidates=100, max_rej_fraction=0.6, max_error=0.3, tau=0, base_score=0, max_score=0, rej_rate=0, counterfactual_rate=None)
+    lore = L2R_LORE(bb, explainer, n_neigh=n_neigh, extract_counterfactuals_by='min_distance', 
+                    optimize_by='nonrejected_accuracy', n_tau_candidates=100, 
+                    max_rej_fraction=0.6, max_error=0.3, tau=0, base_score=0, max_score=0, 
+                    rej_rate=0, counterfactual_rate=None)
         
     lore.fit(X_train, y_train)
 

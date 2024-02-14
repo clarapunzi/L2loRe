@@ -1,6 +1,7 @@
 import numpy as np
 from Lib.LoreSA.surrogate import *
 from .util import vector2dict, multilabel2str, neuclidean
+from .metrics import distance_cont_cat
 from Lib.LoreSA.rule import *
 
 
@@ -33,8 +34,15 @@ def update_crules_by_min_sc(qlen, clen, xc, crule, delta, Xc_final, crule_list, 
             pred_proba_list.append(bb_predict_proba(xc.reshape(1, -1))[0])
     return qlen, clen, xc, crule, delta, Xc_final, crule_list, delta_list, pred_proba_list
     
-def update_crules_by_min_feature_distance(cfdist, x, xc, crule, delta, Xc_final, crule_list, delta_list, metric, pred_proba_list, bb_predict_proba):    
-    qdist = cdist(x.reshape(1, -1), xc.reshape(1, -1), metric=metric).ravel()[0]
+def update_crules_by_min_feature_distance(cfdist, x, xc, crule, delta, Xc_final, crule_list, delta_list, 
+                                          metric, pred_proba_list, bb_predict_proba, numeric_columns, categorical_columns):    
+    
+    if metric == 'euclidean':
+        # compute euclidean distance
+        qdist = cdist(x.reshape(1, -1), xc.reshape(1, -1), metric=metric).ravel()[0]
+    else:
+        # compute metric differently on continuous and categorical variables, then combine
+        qdist = distance_cont_cat(x, xc, numeric_columns, categorical_columns)
         
     if qdist < cfdist:
         cfdist = qdist
@@ -51,7 +59,7 @@ def update_crules_by_min_feature_distance(cfdist, x, xc, crule, delta, Xc_final,
     return cfdist, xc, crule, delta, Xc_final, crule_list, delta_list, pred_proba_list
 
 
-def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_values, numeric_columns, features_map,
+def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_values, numeric_columns, categorical_columns, features_map,
                              features_map_inv, multi_label=False, encdec=None, filter_crules = None, bb_predict_proba = None,
                              uncertainty_thr = 0.5, uncertainty_metric = 'max', constraints=None, unadmittible_features=None, 
                              extract_counterfactuals_by='min_sc', metric = neuclidean):
@@ -140,7 +148,7 @@ def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_va
                         cfdist = cfdist_dict[y_z]
                     else:
                         cfdist = np.inf
-                    cfdist, xc, crule, delta, Xc_final, crule_list, delta_list, pred_proba_list = update_crules_by_min_feature_distance(cfdist, x, xc, crule, delta, Xc_final, crule_list, delta_list, metric, pred_proba_list, bb_predict_proba)
+                    cfdist, xc, crule, delta, Xc_final, crule_list, delta_list, pred_proba_list = update_crules_by_min_feature_distance(cfdist, x, xc, crule, delta, Xc_final, crule_list, delta_list, metric, pred_proba_list, bb_predict_proba, numeric_columns, categorical_columns)
                     cfdist_dict[y_z] = cfdist
                 else:
                     print('Type of counterfactual not yet implemented')
@@ -152,7 +160,7 @@ def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_va
                 
         
         else:
-                    # keep track of different counterfactual classes
+            # keep track of different counterfactual classes
             if y_z in Xc_final_dict.keys():
                 Xc_final = Xc_final_dict[y_z]
                 crule_list = crule_dict[y_z]
@@ -175,7 +183,7 @@ def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_va
                     cfdist = cfdist_dict[y_z]
                 else:
                     cfdist = np.inf
-                cfdist, xc, crule, delta, Xc_final, crule_list, delta_list = update_crules_by_min_feature_distance(cfdist, x, np.array([]), crule, delta, Xc_final, crule_list, delta_list, metric)
+                cfdist, xc, crule, delta, Xc_final, crule_list, delta_list = update_crules_by_min_feature_distance(cfdist, x, np.array([]), crule, delta, Xc_final, crule_list, delta_list, metric, numeric_columns, categorical_columns)
                 cfdist_dict[y_z] = cfdist
             else:
                 print('Type of counterfactual not yet implemented')
