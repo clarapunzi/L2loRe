@@ -41,6 +41,7 @@ def update_crules_by_min_feature_distance(cfdist, x, xc, crule, delta, Xc_final,
         # compute euclidean distance
         qdist = cdist(x.reshape(1, -1), xc.reshape(1, -1), metric=metric).ravel()[0]
     else:
+        # metric = 'mixed'
         # compute metric differently on continuous and categorical variables, then combine
         qdist = distance_cont_cat(x, xc, numeric_columns, categorical_columns)
         
@@ -58,34 +59,42 @@ def update_crules_by_min_feature_distance(cfdist, x, xc, crule, delta, Xc_final,
             pred_proba_list.append(bb_predict_proba(xc.reshape(1, -1))[0])
     return cfdist, xc, crule, delta, Xc_final, crule_list, delta_list, pred_proba_list
 
-
+#                           x, y_bb, superT, Z, Yc,
 def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_values, numeric_columns, categorical_columns, features_map,
                              features_map_inv, multi_label=False, encdec=None, filter_crules = None, bb_predict_proba = None,
                              uncertainty_thr = 0.5, uncertainty_metric = 'max', constraints=None, unadmittible_features=None, 
-                             extract_counterfactuals_by='min_sc', metric = neuclidean):
+                             extract_counterfactuals_by='min_sc', metric = neuclidean, counterfactual_metric = 'mixed'):
     
     xd = vector2dict(x, feature_names)
 
-    # keep only instancies with different class
-    Z_diff = Z[np.where(Y != y)[0]]
+    # keep only instancies with different class wrt to superT prediction
+    # Y = superT prediction on Z
     Y_diff = Y[np.where(Y != y)[0]]
+    Z_diff = Z[np.where(Y != y)[0]]
     # keep track of counterfactual classes
-
-    # keep only instances with high predicted probability
+    
     # Z1 = filter_uncertainty(Z1, unc_thr, bb_predict_proba, uncertainty_metric)
     Xc_final_dict = dict()
     crule_dict = dict()
     delta_dict = dict()
     pred_proba_dict = dict()
+    dist_dict = dict()
     clen_dict, cfdist_dict = dict(), dict()
 
+    # Check that superT is predicting the same class as the black box
+    y_dt = dt.predict(x.reshape(1,-1))
+    if y_dt != y:
+        #print('The prediction of the local decision tree does not agree with the black box')
+        return Xc_final_dict, crule_dict, delta_dict, pred_proba_dict, dist_dict 
+    
+    # keep only instances with high predicted probability
     for i in range(len(Z_diff)):
         z = Z_diff[i]
         y_z = Y_diff[i]
         if y_z == y:
             print('Error: same y!!')
             continue
-        crule = get_rule(z, y, dt, feature_names, class_name, class_values, numeric_columns,encdec, multi_label)
+        crule = get_rule(z, y_z, dt, feature_names, class_name, class_values, numeric_columns,encdec, multi_label)
         delta, qlen = get_falsified_conditions(xd, crule)
         if unadmittible_features != None:
             is_feasible = check_feasibility_of_falsified_conditions(delta, unadmittible_features)
@@ -120,22 +129,27 @@ def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_va
             else:
                 print('Uncertainty metric not yet implemented')
 
-            bb_outcomec = filter_crules(xc.reshape(1, -1))[0]
-            bb_outcomec = class_values[bb_outcomec] if isinstance(class_name, str) else multilabel2str(bb_outcomec,
+            # filter_crules computes the prediction of xc from the bbox
+            bb_outcome = filter_crules(xc.reshape(1, -1))[0]
+            bb_outcome = class_values[bb_outcome] if isinstance(class_name, str) else multilabel2str(bb_outcome,
                                                                                                        class_values)
             dt_outcomec = crule.cons
-            if bb_outcomec == dt_outcomec:
+            # check that bbox and superT have same prediction on xc
+            if bb_outcome == dt_outcomec:
                 # keep track of different counterfactual classes
                 if y_z in Xc_final_dict.keys():
                     Xc_final = Xc_final_dict[y_z]
                     crule_list = crule_dict[y_z]
                     delta_list = delta_dict[y_z]
                     pred_proba_list = pred_proba_dict[y_z]
+                    #dist = dist_dict[y_z]
                 else:
                     Xc_final = []
                     crule_list = []
                     delta_list = []
                     pred_proba_list = []
+                    #dist = []
+                
                 if extract_counterfactuals_by == 'min_sc':
                     if y_z in clen_dict.keys():
                         clen = clen_dict[y_z]
@@ -143,13 +157,17 @@ def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_va
                         clen = np.inf
                     qlen, clen, xc, crule, delta, Xc_final, crule_list, delta_list, pred_proba_list = update_crules_by_min_sc(qlen, clen, xc, crule, delta, Xc_final, crule_list, delta_list, pred_proba_list, bb_predict_proba)
                     clen_dict[y_z] = clen
+                    #dist_dict[y_z] = clen
+                    #dist.append(clen)
                 elif extract_counterfactuals_by == 'min_distance':
                     if y_z in cfdist_dict.keys():
                         cfdist = cfdist_dict[y_z]
                     else:
                         cfdist = np.inf
-                    cfdist, xc, crule, delta, Xc_final, crule_list, delta_list, pred_proba_list = update_crules_by_min_feature_distance(cfdist, x, xc, crule, delta, Xc_final, crule_list, delta_list, metric, pred_proba_list, bb_predict_proba, numeric_columns, categorical_columns)
+                    cfdist, xc, crule, delta, Xc_final, crule_list, delta_list, pred_proba_list = update_crules_by_min_feature_distance(cfdist, x, xc, crule, delta, Xc_final, crule_list, delta_list, counterfactual_metric, pred_proba_list, bb_predict_proba, numeric_columns, categorical_columns)
                     cfdist_dict[y_z] = cfdist
+                    #dist_dict[y_z] = cfdist
+                    #dist.append(cfdist)
                 else:
                     print('Type of counterfactual not yet implemented')
                 
@@ -157,7 +175,8 @@ def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_va
                 crule_dict[y_z] = crule_list
                 delta_dict[y_z] = delta_list
                 pred_proba_dict[y_z] = pred_proba_list
-                
+                #dist_dict[y_z] = dist #
+                dist_dict = cfdist_dict if extract_counterfactuals_by == 'min_distance' else clen_dict
         
         else:
             # keep track of different counterfactual classes
@@ -171,6 +190,7 @@ def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_va
                 crule_list = []
                 delta_list = []
                 pred_proba_list = []
+            
             if extract_counterfactuals_by == 'min_sc':
                 if y_z in clen_dict.keys():
                     clen = clen_dict[y_z]
@@ -183,7 +203,7 @@ def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_va
                     cfdist = cfdist_dict[y_z]
                 else:
                     cfdist = np.inf
-                cfdist, xc, crule, delta, Xc_final, crule_list, delta_list = update_crules_by_min_feature_distance(cfdist, x, np.array([]), crule, delta, Xc_final, crule_list, delta_list, metric, numeric_columns, categorical_columns)
+                cfdist, xc, crule, delta, Xc_final, crule_list, delta_list = update_crules_by_min_feature_distance(cfdist, x, np.array([]), crule, delta, Xc_final, crule_list, delta_list, counterfactual_metric, numeric_columns, categorical_columns)
                 cfdist_dict[y_z] = cfdist
             else:
                 print('Type of counterfactual not yet implemented')
@@ -192,9 +212,10 @@ def get_counterfactual_rules(x, y, dt, Z, Y, feature_names, class_name, class_va
             crule_dict[y_z] = crule_list
             delta_dict[y_z] = delta_list
             pred_proba_dict[y_z] = pred_proba_list
+            dist_dict[y_z] = cfdist_dict if extract_counterfactuals_by == 'min_distance' else clen_dict
         
 
-    return Xc_final_dict, crule_dict, delta_dict, pred_proba_dict
+    return Xc_final_dict, crule_dict, delta_dict, pred_proba_dict, dist_dict
 
 
 def get_counterfactual_rules_supert(x, y, dt, Z, Y, feature_names, class_name, class_values, numeric_columns, features_map,

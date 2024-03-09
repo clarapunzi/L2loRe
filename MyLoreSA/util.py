@@ -364,22 +364,36 @@ def transform_datasets(df_dict, class_field_dict):
 
 def compute_rejection_policy(r_list, dist_dict, y_true, y_pred):
 
-    rej_class_report_list = []
-    an_list = []
-    cq_list = []
-    rq_list = []
+    rej_class_report = dict()
+    an = dict()
+    cq = dict()
+    rq = dict()
     rejected_samples = dict()
     n = len(y_true)
     id_map = {i:j for i, j in enumerate(dist_dict.keys())}
+    dist_values = list(dist_dict.values())
+
+    miscl_array = [int(y_true.values[i]==y_pred[i])for i in range(n)]
+    
+    dt= np.dtype([('distance', np.float64), ('is_misclassified', np.float64)]) 
+    distance_array = np.array([], dtype=dt)
+    for i in range(len(dist_values)):
+        dist = dist_values[i]
+        is_miscl = miscl_array[i]
+        b = np.array([(dist, is_miscl)], dtype=dt) 
+        distance_array = np.concatenate((distance_array, b))
+
     for r_num in r_list:
         r_frac = r_num / n     # fraction of rejected samples over total samples
         # define rejection list
         rejection_list = [0]*n 
         rejected_x = [] 
         if r_num > 0:
-            dist_values = np.array(list(dist_dict.values()))
+            
             #id_to_rej = [k for k, v in sorted(dist_dict.items(), key=lambda x:x[1])][:r_num]
-            id_to_rej = np.argpartition(dist_values, r_num - 1)[:r_num]  # 0 to k indeces of min values are at the front of the array 
+            id_to_rej = np.argpartition(distance_array, r_num - 1, order=['distance','is_misclassified'])[:r_num]  # 0 to k indeces of min values are at the front of the array 
+            # create an array fields 'distance', 'is_mispredicted' to allow misprediction samples to be rejected first
+            
             for i in id_to_rej:
                 rejection_list[i] = 1 
                 rejected_x.append(id_map[i])
@@ -396,16 +410,16 @@ def compute_rejection_policy(r_list, dist_dict, y_true, y_pred):
         RQ = rejection_quality(correct_rejected, correct_nonrejected, miscl_rejected, miscl_nonrejected)
 
         # save results
-        rej_class_report_list.append(df)
+        rej_class_report[r_num] = df
         rejected_samples[r_num] = rejected_x
-        an_list.append(AN)
-        cq_list.append(CQ)
-        rq_list.append(RQ)
+        an[r_num] = AN
+        cq[r_num] = CQ
+        rq[r_num] = RQ
 
-    return rejected_samples, an_list, cq_list, rq_list, rej_class_report_list
+    return rejected_samples, an, cq, rq, rej_class_report
 
 
-def compute_distance_from_counterfactual(X_test, expl_list):
+def compute_distance_from_counterfactual(X, expl_list):
 
     # create a list of [(x, xc)]
     # compute the distance for each of them
@@ -417,8 +431,28 @@ def compute_distance_from_counterfactual(X_test, expl_list):
         for c in expl_list[i].Xc.keys():
             # iterate over all counterfactuals per class 
             for countf in expl_list[i].Xc[c]:
-                dist = cdist(X_test.loc[i].values.reshape(1, -1) , countf.reshape(1, -1))[0]
+                dist = cdist(X.loc[i].values.reshape(1, -1) , countf.reshape(1, -1))[0]
                 if dist < d:
                     d = dist
         dist_dict[i] = float(d)
     return dist_dict
+
+
+# Function to Detection Outlier on one-dimentional datasets.
+def find_anomalies(data):
+    #define a list to accumlate anomalies
+    anomalies = []
+    
+    # Set upper and lower limit to 3 standard deviation
+    random_data_std = np.std(data)
+    random_data_mean = np.mean(data)
+    anomaly_cut_off = random_data_std * 3
+    
+    lower_limit  = random_data_mean - anomaly_cut_off 
+    upper_limit = random_data_mean + anomaly_cut_off
+    
+    # Generate outliers
+    for outlier in data:
+        if outlier > upper_limit or outlier < lower_limit:
+            anomalies.append(outlier)
+    return anomalies

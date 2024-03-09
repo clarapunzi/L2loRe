@@ -106,7 +106,8 @@ for d, d_val in df_dict_new_small.items():
     expl_list = dict()
     for j in tqdm(selected_indices):
         exp = explainer.explain_instance_stable(X_test.loc[j].values, numeric_columns, categorical_columns,
-                                                samples=n_neigh, extract_counterfactuals_by= 'min_distance')
+                                                samples=n_neigh, extract_counterfactuals_by= 'min_distance', 
+                                                metric='mixed')
         expl_list[j] = exp
 
     # compute distance from counterfactuals (minimum over all classes)
@@ -115,7 +116,9 @@ for d, d_val in df_dict_new_small.items():
 
     # r_list contains the rejection fraction on which to evaluate the selective classifier
     r_list = list(range(test_size+1))
-    rejected_samples, an_list, cq_list, rq_list, rej_class_report_list = compute_rejection_policy(r_list, dist_dict, y_test.loc[selected_indices], [y_pred[id_map[i]] for i in selected_indices])
+    rejected_samples, an_list, cq_list, rq_list, rej_class_report_list = compute_rejection_policy(r_list, dist_dict, 
+                                                                                                  y_test.loc[selected_indices], 
+                                                                                                  [y_pred[id_map[i]] for i in selected_indices])
 
     all_d_results[d] = {
         'tested_samples': selected_indices,

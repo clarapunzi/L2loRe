@@ -111,8 +111,8 @@ def nonrejected_accuracy(correct_nonrejected, miscl_nonrejected):
     if nonrejected > 0:
         # r = 1 iff all samples are rejected
         A = correct_nonrejected / nonrejected
-    else:
-        print('All samples have been rejected')
+    # else:
+    #     print('All samples have been rejected')
     return A
 
 def classification_quality_by_r(correct_nonrejected, n, r):
@@ -148,10 +148,10 @@ def rejection_quality(correct_rejected, correct_nonrejected, miscl_rejected, mis
         frac_all = (miscl_rejected + miscl_nonrejected) / (correct_rejected + correct_nonrejected)
         if frac_all != 0:
             RR = frac_rej / frac_all
-        else:
-            print('No samples have been misclassified')
-    else:
-        print('No correct samples have been rejected')
+    #     else:
+    #         print('No samples have been misclassified')
+    # else:
+    #     print('No correct samples have been rejected')
     return RR
 
 

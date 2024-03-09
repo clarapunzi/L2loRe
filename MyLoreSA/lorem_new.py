@@ -32,7 +32,8 @@ class LOREU(LOREM):
 
 
     # qui l'istanza arriva originale
-    def explain_instance_stable(self, x, numeric_columns, categorical_columns, samples=100, use_weights=True, metric=neuclidean, runs=3, exemplar_num=5,
+    def explain_instance_stable(self, x, y_bb, numeric_columns, categorical_columns, samples=100, use_weights=True, 
+                                counterfactual_metric='mixed', metric=neuclidean, runs=3, exemplar_num=5,
                                 n_jobs=-1, prune_tree=False, single=False, extract_counterfactuals_by= 'min_distance', kwargs=None):
 
         if self.multi_label:
@@ -47,6 +48,7 @@ class LOREU(LOREM):
             if self.neigh_type == 'cfs':
                 Z_list = self.multi_neighgen_fn_parallel(x, runs, samples, n_jobs)
             else:
+                # runs is the numer of neighborhood Z, samples the finale size of each neighborhood
                 Z_list = self.multi_neighgen_fn(x, runs, samples, kwargs)
         else:
             Z_list = list()
@@ -195,7 +197,7 @@ class LOREU(LOREM):
                                        self.multi_label, encdec=self.encdec)
         if self.binary == 'binary_from_nari' or self.binary == 'binary_from_dts' or self.binary == 'binary_from_bb':
             #print('la shape di x che arriva fino alla get counter ', x, x.shape)
-            Xc_final, crules, deltas, pred_proba_list = get_counterfactual_rules(x, Yc[0], superT, Z, Yc, self.feature_names,
+            Xc_final, crules, deltas, pred_proba_list, dist_dict = get_counterfactual_rules(x, y_bb, superT, Z, Yc, self.feature_names,
                                                           self.class_name, self.class_values, numeric_columns, categorical_columns,
                                                           self.features_map, self.features_map_inv, encdec=self.encdec,
                                                           filter_crules = self.filter_crules, 
@@ -204,7 +206,8 @@ class LOREU(LOREM):
                                                           uncertainty_metric = self.uncertainty_metric,
                                                           constraints= self.constraints, 
                                                           extract_counterfactuals_by=extract_counterfactuals_by, 
-                                                          metric = metric)
+                                                          metric = neuclidean,
+                                                          counterfactual_metric = counterfactual_metric)
         else:
             #print('la shaoe di x che arriva a get counter con super t', x, x.shape)
             Xc_final, crules, deltas, pred_proba_list = get_counterfactual_rules_supert(x, Yc[0], superT, Z, Yc, self.feature_names,
@@ -241,6 +244,7 @@ class LOREU(LOREM):
         exp.deltas = deltas
         exp.Xc = Xc_final
         exp.c_pred_proba = pred_proba_list
+        exp.dist_dict = dist_dict
         exp.dt = superT
         exp.fidelity = fidelity
         exp.feature_importance = feature_importance

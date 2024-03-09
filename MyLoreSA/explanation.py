@@ -10,3 +10,4 @@ class SuperExplanation(Explanation):
         self.bb_pred_proba = None
         self.c_pred_proba = None
         self.Xc = None
+        self.dist_dict = None
