@@ -17,10 +17,11 @@ from best_params_clf import best_clf_dict, best_params_dict, source_file_dict, c
 from cf_parameters import neigh_kwargs
 import argparse
 from MyLoreSA.l2r_lore import L2R_LORE
+from Lib.L2R.code.model_agnostic import PlugInRule, PlugInRuleAUC, SCRoss
  
 parser = argparse.ArgumentParser(description="",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("-d", "--datasets", nargs='+', type=str, default='student') 
+parser.add_argument("-d", "--datasets", nargs='+', type=str, default='german_credit')
 parser.add_argument("-test_size", "--test_size", type=int, default=-1)
 parser.add_argument("-u", "--uncertainty_threshold", type=float, default=0.5)
 args = parser.parse_args()
@@ -101,28 +102,39 @@ for d, d_val in df_dict_new_small.items():
     bb = get_tuned_classifier(d, clf, clf_dict, best_params_dict)
 
 
-    # Initialize the explainer object
-    explainer = LOREU(X_train.values, bb.predict, bb.predict_proba, feature_names=d_val[1], class_name=class_field_dict[d], 
-                      class_values=d_val[2], numeric_columns=d_val[3], features_map=d_val[-1],
-                      neigh_type=neigh_type, categorical_use_prob=True, continuous_fun_estimation=True, size=n,
-                      ocr=0.1, multi_label=False, one_vs_rest=False, random_state=42, verbose=False,
-                      Kc=X_train, K_transformed=X_train.values, discretize=True, encdec=None,
-                      uncertainty_thr=unc_thr, uncertainty_metric=uncertainty_metric, 
-                      binary=binary, extreme_fidelity = True, **neigh_kwargs)
-    
-
-    lore = L2R_LORE(bb, explainer, numeric_columns, categorical_columns,
-                    n_neighbors=n_neigh, extract_counterfactuals_by=extract_counterfactuals_by, 
-                    optimize_tau_by=optimize_tau_by, 
-                    counterfactual_metric=counterfactual_metric, n_tau_candidates=100, 
-                    max_rej_fraction=0.6, max_error=0.3, tau=0, base_score=0, max_score=0, 
-                    rej_rate=0, counterfactual_rate=None)
+    # here we define the selective classifiers
+    # plugin : plug-in rule by Herbei and Wegkamp
+    # plugin_auc : plug-in rule by Pugnana and Ruggieri, 2023b - a plug-in rule that improves AUC when abstaining
+    # scr : cross-fitting approach by Pugnana and Ruggieri, 2023a - a method that uses cross-fitting to avoid overfitting and reserve some data for calibration
+    plg = PlugInRule(bb)
+    plg_auc = PlugInRuleAUC(bb)
+    scr = SCRoss(bb)
     
     print('Fitting data')    
-    training_results, calibration_results = lore.fit(X_train, y_train, X_cal, y_cal)
+    # here we train the selective classifiers
+    plg.fit(X_train, y_train)
+    plg_auc.fit(X_train, y_train)
+    scr.fit(X_train, y_train)
+
+
+    #calibrate selective classifiers for target coverages
+    rej_rate_list = np.linspace(0, 0.99, num=100)
+    target_coverages = [1-n for n in rej_rate_list]
+
+    #target_coverages = [.99, .75, .50] # here we define the target coverages for the selective classifiers
+    plg.calibrate(X_cal, target_coverages=target_coverages)
+    plg_auc.calibrate(X_cal, y_cal, target_coverages=target_coverages)
+    scr.calibrate(target_coverages=target_coverages)
+
 
     print('Computing predictions')
-    #y_preds, l2r_preds, dist_dict, rejected_samples 
+    # // Evaluate selective classifiers
+    # here we create an array containing levels for acceptance depending on how the selective classifiers are calibrated
+    # since we used three target coverages, we have four levels of acceptance, i.e., 0, 1, 2, 3
+    selected_plg = plg.qband(X_test)
+    selected_plg_auc = plg_auc.qband(X_test)
+    selected_scr = scr.qband(X_test)
+
     prediction_results = lore.predict(X_test)
     y_preds = [y.prediction for y in prediction_results['y_predictions']]
     n_rejected_best = len(prediction_results['rejected_list'])
@@ -140,5 +152,5 @@ for d, d_val in df_dict_new_small.items():
 
     ct = datetime.datetime.now()
     ct = ct.strftime("%m_%d_%Y_%H_%M")
-    with open('Results/l2lore_results_'+d+'_'+ct+'.pickle', "wb") as pickle_file:
+    with open('Results/l2lore_results_'+ct+'.pickle', "wb") as pickle_file:
         pickle.dump(results, pickle_file)

@@ -1,6 +1,7 @@
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.ensemble import IsolationForest
 from scipy.stats import gamma
+from MyLoreSA.explanation import SuperExplanation
 from MyLoreSA.lorem_new import LOREU
 from MyLoreSA.util import compute_rejection_policy, compute_distance_from_counterfactual
 from Lib.LoreSA.util import neuclidean
@@ -72,7 +73,7 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
         self.training_rejection_report = None
 
     
-    def fit(self, X, y, sample=False, n_samples = 200):
+    def fit(self, X, y, X_cal, y_cal, sample=False, n_samples = 200):
 
         # STEP 1: BASE CLASSIFIER
         # Fit and get prediction of the base classifier
@@ -89,7 +90,7 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
 
         # STEP 2: COUNTERFACTUALS
         # Compute counterfactuals for all samples in X (train)
-        X_indices = X.index
+        X_indices = list(X.index)
         sample_size = X.shape[0]
 
         if sample:
@@ -104,23 +105,33 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
         expl_list = dict()
         for i in tqdm(range(len(X_indices))):
             j = X_indices[i]
-            exp = self.explainer.explain_instance_stable(X.loc[j].values, y_pred[i],
+            try:
+                exp = self.explainer.explain_instance_stable(X.loc[j].values, y_pred[i],
                                                          self.numeric_columns, self.categorical_columns,
                                                          samples=self.n_neighbors, 
                                                          extract_counterfactuals_by=self.extract_counterfactuals_by,
                                                          counterfactual_metric = self.counterfactual_metric,
                                                          metric=neuclidean)
-            expl_list[j] = exp
+                expl_list[j] = exp
+            except:
+                print('Error occurred in retrieving the counterfactuals of instance ', j)
+                X.drop(j, inplace=True)
+                y.drop(j, inplace=True)
+                X_indices.remove(j)
+                sample_size = sample_size - 1
+                #exp = SuperExplanatioon()
+            
 
         # compute distance from counterfactuals (minimum over all classes)
         #dist_dict = compute_distance_from_counterfactual(X, expl_list)t
         min_dist_dict = dict()
         for k, v in expl_list.items():
             min_dist = np.inf
-            for d, v_d in v.dist_dict.items():
-                if v_d < min_dist:
-                    min_dist = v_d
-            min_dist_dict[k] = min_dist
+            if v.dist_dict != None:
+                for d, v_d in v.dist_dict.items():
+                    if v_d < min_dist:
+                        min_dist = v_d
+                min_dist_dict[k] = min_dist
         
         
         frac_found_counterfactuals = (sample_size - list(min_dist_dict.values()).count(np.inf) ) / sample_size
@@ -146,7 +157,7 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
                                                                                                       y.loc[X_indices], 
                                                                                                       [y_pred[id_map[i]] for i in X_indices]
                                                                                                       )
-        metric_dict = {
+        train_metric_dict = {
             'classification_quality': cq_dict,
             'rejection_quality'     : rq_dict,
             'nonrejected_accuracy'  : an_dict,
@@ -155,26 +166,105 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
         }       
         
         # STEP 3: FIND OPTIMAL TAU
-        # fit the rejection threshold tau
-        base, tau, m_max, frac_rejected, n_rej_final = self.fit_tau(sample_size, 
+        # fit the rejection threshold tau on the calibration dataset
+        calibration_results = self.fit_calibration(X_cal, y_cal)
+
+        # base, tau, m_max, frac_rejected, n_rej_final = self.fit_tau(sample_size, 
+        #                                                        min_dist_dict, 
+        #                                                        list(an_dict.values()), 
+        #                                                        train_metric_dict[self.optimize_tau_by], 
+        #                                                        self.n_tau_candidates, 
+        #                                                        self.max_rej_fraction, 
+        #                                                        self.max_error
+        #                                                        )
+        
+        self.training_rejection_report = train_metric_dict
+        self.calibration_rejection_report = calibration_results
+
+        # print('Optimal rejection rate (training): ', frac_rejected)
+        # print('Optimal rejection threshold (training): ', tau)
+
+        return train_metric_dict, calibration_results
+    
+
+    def fit_calibration(self, X_cal, y_cal):
+        # Get prediction of the base classifier
+        y_pred = self.base_clf.predict(X_cal.values)
+
+        # Compute counterfactuals for all samples in X (train)  
+        expl_list = dict()
+        id_map = {j:i for i, j in enumerate(X_cal.index)}
+        for j in tqdm(X_cal.index):
+            i = id_map[j]
+            exp = self.explainer.explain_instance_stable(X_cal.loc[j].values, y_pred[i],
+                                                         self.numeric_columns, self.categorical_columns,
+                                                         samples=self.n_neighbors, 
+                                                         extract_counterfactuals_by=self.extract_counterfactuals_by
+                                                         )
+            expl_list[j] = exp
+
+        # compute distance from counterfactuals (minimum over all classes)
+        #dist_dict = compute_distance_from_counterfactual(X, expl_list)
+        min_dist_dict = dict()
+        for k, v in expl_list.items():
+            min_dist = np.inf
+            for d, v_d in v.dist_dict.items():
+                if v_d < min_dist:
+                    min_dist = v_d
+            min_dist_dict[k] = min_dist
+        
+        sample_size = X_cal.shape[0] 
+        frac_found_counterfactuals = (sample_size - list(min_dist_dict.values()).count(np.inf) ) / sample_size
+        print('Counterfactual rate (calibration): ', frac_found_counterfactuals)
+
+        # check which points are novelties among those at inf distance
+        outliers_isolation_forest = IsolationForest(random_state=0).fit_predict(X_cal)
+        outliers_dict = {v:outliers_isolation_forest[k] for k,v in enumerate(X_cal.index)}
+
+        # compare instances with no counterfactuals with outliers
+        for j in outliers_dict.keys():
+            if (min_dist_dict[j] == np.inf) and (outliers_dict[j]) == -1 :
+                # correct outlier
+                min_dist_dict[j] = 0
+
+        # r_list contains the number of rejected samples on which to evaluate the selective classifier
+        r_list = list(range(sample_size+1))
+        X_indices = X_cal.index
+        rejected_samples, an_dict, cq_dict, rq_dict, rej_class_report_dict = compute_rejection_policy(r_list, 
+                                                                                                      min_dist_dict, 
+                                                                                                      y_cal.loc[X_indices], 
+                                                                                                      [y_pred[id_map[i]] for i in X_indices]
+                                                                                                      )
+        cal_metric_dict = {
+            'classification_quality': cq_dict,
+            'rejection_quality'     : rq_dict,
+            'nonrejected_accuracy'  : an_dict,
+            'rejected_samples'      : rejected_samples,
+            'rej_class_report'      : rej_class_report_dict
+        }    
+
+        base, tau, m_max, frac_rejected, n_rej_final, miscl_by_n_rej = self.fit_tau(sample_size, 
                                                                min_dist_dict, 
                                                                list(an_dict.values()), 
-                                                               metric_dict[self.optimize_tau_by], 
+                                                               cal_metric_dict[self.optimize_tau_by], 
                                                                self.n_tau_candidates, 
                                                                self.max_rej_fraction, 
                                                                self.max_error
                                                                )
+        cal_metric_dict['tau'] = tau
+        cal_metric_dict['n_rejected'] = n_rej_final
+        cal_metric_dict['misprediction_by_n_rejected'] = miscl_by_n_rej
         self.tau = tau
         self.base_score = base
         self.max_score = m_max
         self.rej_rate = frac_rejected
-        self.training_rejection_report = metric_dict
-
-        print('Optimal rejection rate: ', frac_rejected)
-        print('Optimal rejection threshold: ', tau)
-
-        return self
+        
+        print('Optimal rejection rate (calibration): ', frac_rejected)
+        print('Optimal rejection threshold (calibration): ', tau)
+        
+        return cal_metric_dict
     
+
     def predict(self, X):
         # output the class inferred by the classifier
         
@@ -214,7 +304,7 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
         
         sample_size = X.shape[0] 
         frac_found_counterfactuals = (sample_size - list(min_dist_dict.values()).count(np.inf) ) / sample_size
-        print('Counterfactual rate: ', frac_found_counterfactuals)
+        print('Counterfactual rate (test): ', frac_found_counterfactuals)
 
 
         # check which points are novelties among those at inf distance
@@ -235,7 +325,7 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
         rejected_samples = [k for k, v in min_dist_dict.items() if v < self.tau]
         n_rejected = len(rejected_samples)
         frac_rej = n_rejected/len(min_dist_dict.keys())
-        print('Number of rejected samples: ', len(rejected_samples), ' (', frac_rej*100, '%)')
+        print('Number of rejected samples (test): ', len(rejected_samples), ' (', frac_rej*100, '%)')
 
         # Final prediction list with -1 for all rejected samples        
         id_map = {i:j for i, j in enumerate(X.index)}
@@ -258,7 +348,7 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
                     preds.append(L2R_LORE_Prediction(x, y_pred[i], xai, True))
             else:
                 xai = self.explain_prediction(expl_list[x], X, x)
-                preds.append(L2R_LORE_Prediction(x, y_pred[i]))
+                preds.append(L2R_LORE_Prediction(x, y_pred[i], xai))
 
         prediction_results = {'y_predictions' : preds,
                               'distance_dict' : min_dist_dict,
@@ -300,7 +390,7 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
         m_max = 0
         tau = np.inf
         n_rej_final = 0
-        #n =  X.shape[0]S
+        #n =  X.shape[0]
         for t in tau_candidates:
             # check number of instances that will be rejected, i.e., all those with distance < t
             if t == np.inf:
@@ -325,7 +415,7 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
 
         base = metric_list[0]
         frac_rejected = n_rej_final / sample_size
-        return base, tau, m_max, frac_rejected, n_rej_final
+        return base, tau, m_max, frac_rejected, n_rej_final, miscl_by_r
     
 
     def explain_rejection(self, explanation, X, i):
@@ -404,13 +494,17 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
                                                                                                       y_true, 
                                                                                                       y_pred
                                                                                                       )
+        # mispredictions
+        mispredictions = self.misprediction_rate(list(an_dict.values()))
+        
         metric_dict = {
             'n_rejected'            : n_rejected,
             'classification_quality': cq_dict,
             'rejection_quality'     : rq_dict,
             'nonrejected_accuracy'  : an_dict,
             'rejected_samples'      : rejected_samples,
-            'rej_class_report'      : rej_class_report_dict
+            'rej_class_report'      : rej_class_report_dict,
+            'mispredictions'        : mispredictions
         }  
     
         return metric_dict
