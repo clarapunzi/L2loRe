@@ -12,8 +12,8 @@ from MyLoreSA.util import get_tuned_classifier, load_datasets, transform_dataset
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
-from best_params_clf import best_clf_dict, best_params_dict, source_file_dict, class_field_dict
-from cf_parameters import neigh_kwargs
+from MyLoreSA.best_params_clf import best_clf_dict, best_params_dict, source_file_dict, class_field_dict
+from MyLoreSA.cf_parameters import neigh_kwargs
 import argparse
  
 parser = argparse.ArgumentParser(description="",

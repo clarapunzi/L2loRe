@@ -20,7 +20,7 @@ from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
 from pytorch_tabnet.tab_model import TabNetClassifier
 
-from best_params_clf import best_params_dict, source_file_dict, class_field_dict
+from MyLoreSA.best_params_clf import best_params_dict, source_file_dict, class_field_dict
 
 if torch.cuda.is_available():
     device = 'cuda'

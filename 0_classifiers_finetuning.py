@@ -24,7 +24,7 @@ from pytorch_tabnet.tab_model import TabNetClassifier
 #from sklearn.model_selection import RepeatedStratifiedKFold
 #from sklearn.model_selection import RandomizedSearchCV
 
-from best_params_clf import best_params_dict, grid_dict
+from MyLoreSA.best_params_clf import best_params_dict, grid_dict
 import argparse
  
 parser = argparse.ArgumentParser(description="",
