@@ -188,6 +188,8 @@ class L2R_LORE(BaseEstimator, ClassifierMixin):
     
 
     def fit_calibration(self, X_cal, y_cal):
+
+        print('Confidence ')
         # Get prediction of the base classifier
         y_pred = self.base_clf.predict(X_cal.values)
 
