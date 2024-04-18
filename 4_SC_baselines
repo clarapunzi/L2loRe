@@ -9,7 +9,7 @@ import datetime
 
 #from Tabular.xailib.explainers.lore_explainer import LoreTabularExplainer
 from MyLoreSA.lorem_new import LOREU
-from MyLoreSA.util import get_tuned_classifier, load_datasets, transform_datasets, compute_rejection_policy, compute_distance_from_counterfactual
+from MyLoreSA.util import get_tuned_classifier, load_datasets, transform_datasets, nonrejected_accuracy, rejection_classification_report, get_rejected_list, classification_quality, rejection_quality
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
@@ -110,18 +110,18 @@ for d, d_val in df_dict_new_small.items():
     plg_auc = PlugInRuleAUC(bb)
     scr = SCRoss(bb)
     
-    print('Fitting data')    
+    print('Fitting data')   
     # here we train the selective classifiers
-    plg.fit(X_train, y_train)
-    plg_auc.fit(X_train, y_train)
-    scr.fit(X_train, y_train)
+    plg.fit(X_train.to_numpy(), y_train.to_numpy())
+    plg_auc.fit(X_train.to_numpy(), y_train.to_numpy())
+    scr.fit(X_train.to_numpy(), y_train.to_numpy())
 
 
-    #calibrate selective classifiers for target coverages
+    # calibrate selective classifiers for target coverages
     rej_rate_list = np.linspace(0, 0.99, num=100)
     target_coverages = [1-n for n in rej_rate_list]
 
-    #target_coverages = [.99, .75, .50] # here we define the target coverages for the selective classifiers
+    # target_coverages = [.99, .75, .50] # here we define the target coverages for the selective classifiers
     plg.calibrate(X_cal, target_coverages=target_coverages)
     plg_auc.calibrate(X_cal, y_cal, target_coverages=target_coverages)
     scr.calibrate(target_coverages=target_coverages)
@@ -130,27 +130,91 @@ for d, d_val in df_dict_new_small.items():
     print('Computing predictions')
     # // Evaluate selective classifiers
     # here we create an array containing levels for acceptance depending on how the selective classifiers are calibrated
-    # since we used three target coverages, we have four levels of acceptance, i.e., 0, 1, 2, 3
+    # since we used 100 target coverages, we have 101 levels of acceptance, i.e., 0, 1, 2, 3, ..., 100
     selected_plg = plg.qband(X_test)
     selected_plg_auc = plg_auc.qband(X_test)
     selected_scr = scr.qband(X_test)
 
-    prediction_results = lore.predict(X_test)
-    y_preds = [y.prediction for y in prediction_results['y_predictions']]
-    n_rejected_best = len(prediction_results['rejected_list'])
-    
-    print('Evaluating the selective classifier')
-    evaluation_results = lore.evaluate_l2r(len(prediction_results['rejected_list']), 
-                                           prediction_results['distance_dict'], 
-                                           y_test, y_preds)
 
-    results = {'training': training_results, 
-               'calibration': calibration_results,
-               'predictions': prediction_results,
-               'evaluation': evaluation_results
+
+    print('Evaluating the selective classifier')
+    #y_pred_plg = plg.predict(df_test[atts])
+    rejected_by_coverage_plg = dict()
+    rejected_by_coverage_plgauc = dict()
+    rejected_by_coverage_scr = dict()
+    n = len(y_test)
+
+    for i in range(100):
+        qband = i
+        rej_rate = 1 - target_coverages[i] # save as rejection rate, not coverage
+        #rejected list is a 0/1 list with 1 at rejected indices
+        rejected_list_plg = get_rejected_list(selected_plg, i)
+        rejected_list_plgauc = get_rejected_list(selected_plg_auc, i)
+        rejected_list_scr = get_rejected_list(selected_scr, i)
+    
+        correct_nonrejected_plg, correct_rejected_plg, miscl_nonrejected_plg, miscl_rejected_plg, df_plg = rejection_classification_report(y_test, 
+                                                                                                               plg.predict(X_test), 
+                                                                                                               rejected_list_plg)
+    
+        correct_nonrejected_plgauc, correct_rejected_plgauc, miscl_nonrejected_plgauc, miscl_rejected_plgauc, df_plgauc = rejection_classification_report(y_test, 
+                                                                                                               plg_auc.predict(X_test), 
+                                                                                                               rejected_list_plgauc)
+    
+        correct_nonrejected_scr, correct_rejected_scr, miscl_nonrejected_scr, miscl_rejected_scr, df_scr = rejection_classification_report(y_test, 
+                                                                                                               scr.predict(X_test), 
+                                                                                                               rejected_list_scr)
+
+        # get performance metrics
+        AN_plg = nonrejected_accuracy(correct_nonrejected_plg, miscl_nonrejected_plg)
+        AN_plgauc = nonrejected_accuracy(correct_nonrejected_plgauc, miscl_nonrejected_plgauc)
+        AN_scr = nonrejected_accuracy(correct_nonrejected_scr, miscl_nonrejected_scr)
+        
+        CQ_plg = classification_quality(correct_nonrejected_plg, miscl_rejected_plg, n)
+        CQ_plgauc = classification_quality(correct_nonrejected_plgauc, miscl_rejected_plgauc, n)
+        CQ_scr = classification_quality(correct_nonrejected_scr, miscl_rejected_scr, n)
+        
+        
+        RQ_plg = rejection_quality(correct_rejected_plg, correct_nonrejected_plg, miscl_rejected_plg, miscl_nonrejected_plg)
+        RQ_plgauc = rejection_quality(correct_rejected_plgauc, correct_nonrejected_plgauc, miscl_rejected_plgauc, miscl_nonrejected_plgauc)
+        RQ_scr = rejection_quality(correct_rejected_scr, correct_nonrejected_scr, miscl_rejected_scr, miscl_nonrejected_scr)
+    
+    
+        rejected_by_coverage_plg[rej_rate] = {
+            'classification_quality': CQ_plg,
+            'rejection_quality'     : RQ_plg,
+            'nonrejected_accuracy'  : AN_plg
+            }
+        rejected_by_coverage_plgauc[rej_rate] = {
+            'classification_quality': CQ_plgauc,
+            'rejection_quality'     : RQ_plgauc,
+            'nonrejected_accuracy'  : AN_plgauc
+            }
+        rejected_by_coverage_scr[rej_rate] = {
+            'classification_quality': CQ_scr,
+            'rejection_quality'     : RQ_scr,
+            'nonrejected_accuracy'  : AN_scr
+            }
+
+
+
+
+
+
+    # prediction_results = lore.predict(X_test)
+    # y_preds = [y.prediction for y in prediction_results['y_predictions']]
+    # n_rejected_best = len(prediction_results['rejected_list'])
+    
+    # print('Evaluating the selective classifier')
+    # evaluation_results = lore.evaluate_l2r(len(prediction_results['rejected_list']), 
+    #                                        prediction_results['distance_dict'], 
+    #                                        y_test, y_preds)
+
+    results = {'PLG': rejected_by_coverage_plg,
+               'PLGAUC' : rejected_by_coverage_plgauc,
+               'SCR': rejected_by_coverage_scr
                }
 
     ct = datetime.datetime.now()
     ct = ct.strftime("%m_%d_%Y_%H_%M")
-    with open('Results/l2lore_results_'+ct+'.pickle', "wb") as pickle_file:
+    with open('Results/baseline_results_'+ct+'.pickle', "wb") as pickle_file:
         pickle.dump(results, pickle_file)

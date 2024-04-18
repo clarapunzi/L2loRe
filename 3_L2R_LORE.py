@@ -13,14 +13,14 @@ from MyLoreSA.util import get_tuned_classifier, load_datasets, transform_dataset
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
-from best_params_clf import best_clf_dict, best_params_dict, source_file_dict, class_field_dict
-from cf_parameters import neigh_kwargs
+from MyLoreSA.best_params_clf import best_clf_dict, best_params_dict, source_file_dict, class_field_dict
+from MyLoreSA.cf_parameters import neigh_kwargs
 import argparse
 from MyLoreSA.l2r_lore import L2R_LORE
  
 parser = argparse.ArgumentParser(description="",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("-d", "--datasets", nargs='+', type=str, default='student') 
+parser.add_argument("-d", "--datasets", nargs='+', type=str, default='german_credit') 
 parser.add_argument("-test_size", "--test_size", type=int, default=-1)
 parser.add_argument("-u", "--uncertainty_threshold", type=float, default=0.5)
 args = parser.parse_args()

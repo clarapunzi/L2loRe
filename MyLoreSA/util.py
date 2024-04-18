@@ -456,3 +456,15 @@ def find_anomalies(data):
         if outlier > upper_limit or outlier < lower_limit:
             anomalies.append(outlier)
     return anomalies
+
+
+# create: rejected_list is a 0/1 list with 1 at rejected indices
+# qband is a list with levels of acceptance: for j in range(len(target_coverage)), qband>=j is rejected
+# qband >= i means setting to 0 (accept) all samples above i
+def get_rejected_list(qband, i):
+    n = len(qband)
+    rejected_list = [1]*n
+    for j in range(n):
+        if qband[j] >= i:
+            rejected_list[j] = 0
+    return rejected_list
